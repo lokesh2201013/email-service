@@ -4,6 +4,7 @@ import (
 	"github.com/lokesh2201013/email-service/controllers"
 	"github.com/gofiber/fiber/v2"
 	"github.com/lokesh2201013/email-service/middleware"
+	"github.com/lokesh2201013/email-service/metrics"
 )
 
 func SetupRoutes(app *fiber.App) {
@@ -20,5 +21,9 @@ func SetupRoutes(app *fiber.App) {
 	app.Delete("/delete-identity/:email", controllers.DeleteIdentity)
 	app.Post("/send-email", controllers.SendEmail)
 	app.Post("/create-template", controllers.CreateTemplate)
-	//app.Post("/send-custom-email", controllers.SendCustomEmail)  
+	//app.Post("/send-custom-email", controllers.SendCustomEmail) 
+	
+	// metrics routes
+	app.Get("/email-metrics/:senderEmail", metrics.GetEmailMetrics)
+	app.Get("/admin-email-metrics/:adminName", metrics.GetAdminEmailMetrics)
 }

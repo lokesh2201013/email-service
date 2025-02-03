@@ -18,7 +18,5 @@ func CreateTemplate(c *fiber.Ctx) error{
 	if err:=database.DB.Create(&template).Error;err!=nil{
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create template"})
 	}
-
-	
 	return c.JSON(fiber.Map{"message": "Template created successfully","template": template})
 }

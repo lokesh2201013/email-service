@@ -6,6 +6,7 @@ import (
     "github.com/lokesh2201013/email-service/models"
     "github.com/lokesh2201013/email-service/middleware"
     "golang.org/x/crypto/bcrypt"
+    "fmt"
 )
 
 func Register(c *fiber.Ctx) error {
@@ -17,12 +18,25 @@ func Register(c *fiber.Ctx) error {
     hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
     user.Password = string(hashedPassword)
 
+   
     if err := database.DB.Create(&user).Error; err != nil {
         return c.Status(500).JSON(fiber.Map{"error": "Could not register user"})
     }
 
-    return c.JSON(fiber.Map{"message": "User registered successfully"})
+    user.SandboxTime = user.CreatedAt.AddDate(0, 0, 7)
+
+
+    if err := database.DB.Save(&user).Error; err != nil {
+        return c.Status(500).JSON(fiber.Map{"error": "Could not update user with SandboxTime"})
+    }
+
+    return c.JSON(fiber.Map{
+        "message":       "User registered successfully and Analytics created",
+        "Created At":    user.CreatedAt,
+        "SandboxMessage": fmt.Sprintf("Newly registered user will be added to the sandbox and will be in it till %s", user.SandboxTime),
+    })
 }
+
 
 func Login(c *fiber.Ctx) error {
     var user models.User

@@ -29,12 +29,18 @@ func VerifyEmailID(c *fiber.Ctx) error {
 	if err := database.DB.Where("email = ?", sender.Email).First(&existingSender).Error; err != nil {
 		// If the sender does not exist, verify SMTP and create a new sender
 		if err := verifySMTP(sender); err != nil {
+
 			return c.Status(400).JSON(fiber.Map{"error": "SMTP verification failure"})
 		}
 
 		// Mark sender as verified and create a new entry in the database
 		sender.Verified = true
 		if err := database.DB.Create(&sender).Error; err != nil {
+			// Create a new entry in the analytics table
+			var Analytics models.Analytics
+			if err:=database.DB.Create(&Analytics).Error;err!=nil{
+			   return c.Status(500).JSON(fiber.Map{"error": "Could not create analytics"})
+			}
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to add sender"})
 		}
 		return c.JSON(fiber.Map{"message": "Email verified and added to sender list", "email": sender.Email})
@@ -97,7 +103,6 @@ func ListunVerifiedIdentities(c *fiber.Ctx) error {
 }
 
 //delete sender
-
 func DeleteIdentity(c *fiber.Ctx) error {
 	email := c.Params("email")
 

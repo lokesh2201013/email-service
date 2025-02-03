@@ -10,10 +10,7 @@ import (
 
 func main() {
 	database.InitDB()
-
 	app := fiber.New()
-
 	routes.SetupRoutes(app)
-
 	log.Fatal(app.Listen(":3000"))
 }
