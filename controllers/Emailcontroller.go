@@ -1,15 +1,20 @@
 package controllers
 
 import (
-	"github.com/lokesh2201013/email-service/database"
-	"github.com/lokesh2201013/email-service/models"
-	"github.com/gofiber/fiber/v2"
-	"gopkg.in/gomail.v2"
 	"strings"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/lokesh2201013/email-service/database"
 	"github.com/lokesh2201013/email-service/metrics"
+	"github.com/lokesh2201013/email-service/models"
+	"gopkg.in/gomail.v2"
 )
 
-
+const (
+	maxEmailsPerDay    = 200
+	maxEmailsPerSecond = 1
+)
 type EmailRequest struct {
 	From    string   `json:"from"`
 	To      []string `json:"to"`
@@ -18,8 +23,33 @@ type EmailRequest struct {
 	Format  string   `json:"format"`
 }
 
-// Helper function to create the email message
-func createEmailMessage(sender models.Sender, req *EmailRequest) (*gomail.Message, error) {
+//accumulate all total email in sender which have the same admin
+func modifyAccumulatedEmail(adminName string) error {
+	var analytics []models.Analytics
+
+	
+	if err := database.DB.Where("admin_name = ?", adminName).Find(&analytics).Error; err != nil {
+		return err
+	}
+
+	totalAccumulatedEmails := 0
+	for _, record := range analytics {
+		totalAccumulatedEmails += record.AccumulatedEmail
+	}
+
+	
+	for i := range analytics {
+		analytics[i].AccumulatedEmail = totalAccumulatedEmails
+	}
+	
+	if err := database.DB.Save(&analytics).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+
+/*func createEmailMessage(sender models.Sender, req *EmailRequest) (*gomail.Message, error) {
 	mail := gomail.NewMessage()
 	mail.SetHeader("From", sender.Email)
 	mail.SetHeader("To", req.To...)
@@ -33,11 +63,10 @@ func createEmailMessage(sender models.Sender, req *EmailRequest) (*gomail.Messag
 	default:
 		return nil, fiber.NewError(400, "Invalid format")
 	}
-
 	return mail, nil
-}
+}*/
 
-// Handle the error and update analytics
+// handle the error for email fialed
 func handleEmailError(err error, analytics *models.Analytics) error {
 	errMsg := err.Error()
 	if strings.Contains(errMsg, "550") || strings.Contains(errMsg, "551") || strings.Contains(errMsg, "552") || strings.Contains(errMsg, "553") {
@@ -59,56 +88,111 @@ func handleEmailError(err error, analytics *models.Analytics) error {
 		analytics.Rejected++
 	}
 
-	// Calculate and update metrics
+	// calc metrics
 	metricsWrapper := &metrics.AnalyticsWrapper{*analytics}
 	metricsWrapper.CalculateMetrics()
 
-	// Save updated analytics (you can put this in your database logic)
 	database.DB.Save(&analytics)
 	return fiber.NewError(500, "Failed to send email: " + errMsg)
 }
 
-// Send email
 func SendEmail(c *fiber.Ctx) error {
-	var req EmailRequest
 	
+	var req EmailRequest
+
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request content"})
 	}
 
-	// Fetch sender
 	var sender models.Sender
 	if err := database.DB.Where("email=? AND verified=?", req.From, true).First(&sender).Error; err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Sender not found"})
 	}
 
-	// Create email
-	mail, err := createEmailMessage(sender, &req)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-	}
-
 	// Setup SMTP dialer
 	d := gomail.NewDialer(sender.SMTPHost, sender.SMTPPort, sender.Username, sender.AppPassword)
 
-	// Send email and capture the error
-	err = d.DialAndSend(mail)
-
-	// Fetch Analytics
 	var analytics models.Analytics
 	if err := database.DB.Where("admin_name = ? AND sender_id = ?", sender.AdminName, sender.ID).First(&analytics).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Analytics record not found"})
 	}
+    
+	var admine models.User
+		if err := database.DB.Where("sender AND admin=?", sender.Email, sender.AdminName).First(&admine).Error; err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Sender not found"})
+		}
+		daysSinceCreation := int(time.Since(admine.CreatedAt).Hours() / 24)
 
-	analytics.TotalEmails++
 
-	// Handle email sending error
-	if err != nil {
-		return handleEmailError(err, &analytics)
+	// Send emails one by one
+	if daysSinceCreation<=7{
+	for _, recipient := range req.To {
+		time.Sleep(time.Second)
+		mail := gomail.NewMessage()
+		mail.SetHeader("From", sender.Email)
+		//send one recipent at  atime
+		mail.SetHeader("To", recipient) 
+		mail.SetHeader("Subject", req.Subject)
+
+		switch req.Format {
+		case "html":
+			mail.SetBody("text/html", req.Body)
+		case "text":
+			mail.SetBody("text/plain", req.Body)
+		default:
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid format"})
+		}
+		
+		defer modifyAccumulatedEmail(admine.Username)
+		
+
+        if analytics.AccumulatedEmail >= maxEmailsPerDay*daysSinceCreation && daysSinceCreation<=7 {
+			return c.Status(400).JSON(fiber.Map{"error": "Mail limit of day exceeded"})
+		}
+        
+		err := d.DialAndSend(mail)
+		if err != nil {
+			handleEmailError(err, &analytics)
+			continue
+		}
+        
+		analytics.TotalEmails++
+		analytics.Delivered++
+	}}else{
+		for _, recipient := range req.To {
+			time.Sleep(time.Second)
+			mail := gomail.NewMessage()
+			mail.SetHeader("From", sender.Email)
+			//send one recipent at  atime
+			mail.SetHeader("To", recipient) 
+			mail.SetHeader("Subject", req.Subject)
+	
+			switch req.Format {
+			case "html":
+				mail.SetBody("text/html", req.Body)
+			case "text":
+				mail.SetBody("text/plain", req.Body)
+			default:
+				return c.Status(400).JSON(fiber.Map{"error": "Invalid format"})
+			}
+			
+			defer modifyAccumulatedEmail(admine.Username)
+			
+	
+			if analytics.AccumulatedEmail >= maxEmailsPerDay*daysSinceCreation && daysSinceCreation<=7 {
+				return c.Status(400).JSON(fiber.Map{"error": "Mail limit of day exceeded"})
+			}
+			
+			err := d.DialAndSend(mail)
+			if err != nil {
+				handleEmailError(err, &analytics)
+				continue
+			}
+			
+			analytics.TotalEmails++
+			analytics.Delivered++
+		}
 	}
-
-	// If no error, email was delivered
-	analytics.Delivered++
 
 	// Calculate and update metrics
 	metricsWrapper := &metrics.AnalyticsWrapper{analytics}
@@ -116,6 +200,6 @@ func SendEmail(c *fiber.Ctx) error {
 
 	// Save updated analytics
 	database.DB.Save(&analytics)
-
-	return c.JSON(fiber.Map{"message": "Email sent successfully"})
+    
+	return c.JSON(fiber.Map{"message": "Emails processed successfully"})
 }

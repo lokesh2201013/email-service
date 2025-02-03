@@ -35,10 +35,11 @@ type User struct {
 
 type Analytics struct {
 	ID            uint           `gorm:"primaryKey"`
-	AdminName	 string         `json:"admin_name" gorm:"not null"` // Foreign key
-	SenderID      uint           `gorm:"not null"` // Foreign key
+	AdminName	 string         `json:"admin_name" gorm:"not null"` // foreign key
+	SenderID      uint           `gorm:"not null"` // forigrn key
 	Sender        Sender         `gorm:"foreignKey:SenderID"`
 	TotalEmails   int            `json:"total_emails" gorm:"default:0"`
+	AccumulatedEmail int          `json:"accumulatedemails" gorm:"default:0"`
 	Delivered     int            `json:"delivered" gorm:"default:0"`
 	//InvalidEmails []string       `json:"invalid_emails"` 
 	Bounced       int            `json:"bounced" gorm:"default:0"`
