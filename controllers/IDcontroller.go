@@ -5,6 +5,7 @@ import (
 	"github.com/lokesh2201013/email-service/models"
 	"github.com/gofiber/fiber/v2"
 	"gopkg.in/gomail.v2"
+	"fmt"
 )
 
 func verifySMTP(sender models.Sender) error {
@@ -15,25 +16,53 @@ func verifySMTP(sender models.Sender) error {
 
 func VerifyEmailID(c *fiber.Ctx) error {
 	var sender models.Sender
+	fmt.Println("AppPassword before insert:", sender.AppPassword)
+
 	if err := c.BodyParser(&sender); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request content"})
 	}
 
+	// Ensure password is provided
+	if sender.AppPassword == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Password must be provided"})
+	}
+
+	// Check if sender already exists
 	var existingSender models.Sender
 	if err := database.DB.Where("email = ?", sender.Email).First(&existingSender).Error; err != nil {
+		// If sender doesn't exist, create new sender
 		if err := verifySMTP(sender); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "SMTP verification failure"})
 		}
+		 // Ensure this is set correctly
 		sender.Verified = true
 		if err := database.DB.Create(&sender).Error; err != nil {
-			var Analytics models.Analytics
-			if err := database.DB.Create(&Analytics).Error; err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "Could not create analytics"})
-			}
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to add sender"})
+		}
+
+		// Ensure sender.ID is populated after creation
+		if sender.ID == 0 {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to get sender ID"})
+		}
+
+		// Create Analytics only after sender creation
+		analytics := models.Analytics{
+			AdminName:   sender.AdminName,
+			SenderID:    sender.ID, // Use the correct ID here
+			TotalEmails: 0,
+			Delivered:   0,
+			Bounced:     0,
+			Complaints:  0,
+			Rejected:    0,
+			CreatedAt:   sender.CreatedAt,
+			UpdatedAt:   sender.UpdatedAt,
+		}
+		if err := database.DB.Create(&analytics).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create analytics for sender"})
 		}
 		return c.JSON(fiber.Map{"message": "Email verified and added to sender list", "email": sender.Email})
 	} else {
+		// If sender exists, verify and update
 		if existingSender.Verified {
 			return c.Status(400).JSON(fiber.Map{"error": "Sender already verified"})
 		}
@@ -44,6 +73,23 @@ func VerifyEmailID(c *fiber.Ctx) error {
 		if err := database.DB.Save(&existingSender).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to update sender"})
 		}
+
+		// Create Analytics for updated sender
+		analytics := models.Analytics{
+			AdminName:   existingSender.AdminName,
+			SenderID:    existingSender.ID,
+			TotalEmails: 0,
+			Delivered:   0,
+			Bounced:     0,
+			Complaints:  0,
+			Rejected:    0,
+			CreatedAt:   existingSender.CreatedAt,
+			UpdatedAt:   existingSender.UpdatedAt,
+		}
+		if err := database.DB.Create(&analytics).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create analytics for sender"})
+		}
+
 		return c.JSON(fiber.Map{"message": "Email verified and updated", "email": existingSender.Email})
 	}
 }
@@ -75,9 +121,18 @@ func ListunVerifiedIdentities(c *fiber.Ctx) error {
 }
 
 func DeleteIdentity(c *fiber.Ctx) error {
-	email := c.Params("email")
-	if err := database.DB.Where("email = ?", email).Delete(&models.Sender{}).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete sender"})
-	}
-	return c.JSON(fiber.Map{"message": "Sender deleted successfully"})
+    email := c.Params("email")
+    fmt.Println("Deleting sender with email:", email)
+
+    // Delete associated analytics records first
+    if err := database.DB.Where("sender_id = (SELECT id FROM senders WHERE email = ?)", email).Delete(&models.Analytics{}).Error; err != nil {
+        return c.Status(500).JSON(fiber.Map{"error": "Failed to delete associated analytics records"})
+    }
+
+    // Now delete the sender record
+    if err := database.DB.Where("email = ?", email).Delete(&models.Sender{}).Error; err != nil {
+        return c.Status(500).JSON(fiber.Map{"error": "Failed to delete sender"})
+    }
+
+    return c.JSON(fiber.Map{"message": "Sender deleted successfully"})
 }
