@@ -7,7 +7,7 @@ import(
 	"github.com/gofiber/fiber/v2"
 )
 
-
+// it allows user to strore a custom template
 func CreateTemplate(c *fiber.Ctx) error{
 	var template models.Template
 

@@ -47,7 +47,7 @@ func SendEmail(c *fiber.Ctx) error {
 	}
 
 	// Set up the SMTP dialer with the sender's credentials
-	d := gomail.NewDialer(sender.SMTPHost, sender.SMTPPort, sender.Username, sender.Password)
+	d := gomail.NewDialer(sender.SMTPHost, sender.SMTPPort, sender.Username, sender.AppPassword)
 
 	// Try to send the email
 	if err := d.DialAndSend(mail); err != nil {
