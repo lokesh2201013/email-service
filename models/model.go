@@ -6,13 +6,12 @@ import (
 )
 
 type Sender struct {
-	gorm.Model
+	ID        uint `gorm:"primarykey"`
 	AdminName  string `json:"admin_name" gorm:"not null"`
 	Email      string `json:"email" gorm:"unique;not null"`
 	SMTPHost   string `json:"smtp_host" gorm:"not null"`
 	SMTPPort   int    `json:"smtp_port" gorm:"not null"`
 	Username   string `json:"username" gorm:"not null"`
-
    AppPassword string `json:"password" gorm:"column:password"`
 	Verified   bool   `json:"verified" gorm:"default:false"`
 }

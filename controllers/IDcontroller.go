@@ -54,8 +54,6 @@ func VerifyEmailID(c *fiber.Ctx) error {
 			Bounced:     0,
 			Complaints:  0,
 			Rejected:    0,
-			CreatedAt:   sender.CreatedAt,
-			UpdatedAt:   sender.UpdatedAt,
 		}
 		if err := database.DB.Create(&analytics).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to create analytics for sender"})
@@ -83,8 +81,6 @@ func VerifyEmailID(c *fiber.Ctx) error {
 			Bounced:     0,
 			Complaints:  0,
 			Rejected:    0,
-			CreatedAt:   existingSender.CreatedAt,
-			UpdatedAt:   existingSender.UpdatedAt,
 		}
 		if err := database.DB.Create(&analytics).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Failed to create analytics for sender"})
